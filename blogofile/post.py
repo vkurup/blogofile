@@ -283,7 +283,7 @@ def parse_posts(directory):
         src = open(post_path,"r").read().decode(config.blog_post_encoding)
         try:
             p = Post(src, filename=post_fn)
-        except PostParseException as e:
+        except PostParseException, e:
             logger.warning(e.value+" : Skipping this post.")
             continue
         #Exclude some posts
