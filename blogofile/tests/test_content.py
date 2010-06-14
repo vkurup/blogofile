@@ -16,6 +16,8 @@ class TestContent(unittest.TestCase):
         #Reinitialize the configuration
         main.config.init()
     def tearDown(self):
+        #Revert the config overridden options
+        main.config.override_options = {}
         #go back to the directory we used to be in
         os.chdir(self.previous_dir)
         #Clean up the build directory
@@ -35,10 +37,10 @@ This is a test post
         f.write(src)
         f.close()
         main.config.override_options = {
-            "site_url":"http://www.yoursite.com",
-            "blog_path":"/blog",
-            "blog_auto_permalink_enabled": True,
-            "blog_auto_permalink": "/blog/:year/:month/:day/:title" }
+            "site.url":"http://www.yoursite.com",
+            "blog.path":"/blog",
+            "blog.auto_permalink.enabled": True,
+            "blog.auto_permalink.path": "/blog/:year/:month/:day/:title" }
         main.main("build")
         rendered = open(os.path.join(self.build_path,"_site","blog","2009","08",
                                      "16","this-is-a-test-post","index.html"
@@ -59,10 +61,10 @@ This is a test post
         f.write(src)
         f.close()
         main.config.override_options = {
-            "site_url":"http://www.yoursite.com",
-            "blog_path":"/blog",
-            "blog_auto_permalink_enabled": True,
-            "blog_auto_permalink": "/blog/:year/:month/:day/:title" }
+            "site.url":"http://www.yoursite.com",
+            "blog.path":"/blog",
+            "blog.auto_permalink.enabled": True,
+            "blog.auto_permalink.path": "/blog/:year/:month/:day/:title" }
         main.main("build")
         rendered = open(os.path.join(self.build_path,"_site","bLog","2009","08",
                                      "16","This-Is-A-TeSt-Post","index.html"
@@ -82,10 +84,10 @@ This is a test post without a permalink
         f.write(src)
         f.close()
         main.config.override_options = {
-            "site_url":"http://www.BlogoFile.com",
-            "blog_path":"/Blog",
-            "blog_auto_permalink_enabled": True,
-            "blog_auto_permalink": "/Blog/:year/:month/:day/:title" }
+            "site.url":"http://www.BlogoFile.com",
+            "blog.path":"/Blog",
+            "blog.auto_permalink.enabled": True,
+            "blog.auto_permalink.path": "/Blog/:year/:month/:day/:title" }
         main.main("build")
         rendered = open(os.path.join(self.build_path,"_site","Blog","2009","08",
                                      "16","this-is-a-test-post","index.html"
@@ -107,10 +109,10 @@ This is a test post
         f.write(src)
         f.close()
         main.config.override_options = {
-            "site_url":"http://www.yoursite.com",
-            "blog_path":"/blog",
-            "blog_auto_permalink_enabled": True,
-            "blog_auto_permalink": "/blog/:year/:month/:day/:title" }
+            "site.url":"http://www.yoursite.com",
+            "blog.path":"/blog",
+            "blog.auto_permalink.enabled": True,
+            "blog.auto_permalink.path": "/blog/:year/:month/:day/:title" }
         main.main("build")
         rendered = open(os.path.join(self.build_path,"_site","blog","2009","08",
                                      "16","this-is-a-test-post","index.html"
@@ -132,10 +134,10 @@ This is a test post
         f.write(src)
         f.close()
         main.config.override_options = {
-            "site_url":"http://www.yoursite.com",
-            "blog_path":"/blog",
-            "blog_auto_permalink_enabled": True,
-            "blog_auto_permalink": "/blog/:year/:month/:day/:title" }
+            "site.url":"http://www.yoursite.com",
+            "blog.path":"/blog",
+            "blog.auto_permalink.enabled": True,
+            "blog.auto_permalink.path": "/blog/:year/:month/:day/:title" }
         main.main("build")
         feed = open(os.path.join(self.build_path,"_site","blog","feed",
                                  "index.xml")).read()
@@ -147,8 +149,8 @@ This is a test post
         """Make sure category links in posts are correct"""
         main.main("init blog_unit_test")
         main.config.override_options = {
-            "site_url":"http://www.yoursite.com",
-            "blog_path":"/blog"
+            "site.url":"http://www.yoursite.com",
+            "blog.path":"/blog"
             }
         #Write a blog post with categories:
         src = """---
@@ -169,3 +171,43 @@ This is a test post
         print soup.findAll("a")
         assert soup.find("a",attrs={'href':'/blog/category/category-1'})
         assert soup.find("a",attrs={'href':'/blog/category/category-2'})
+
+    def testReStructuredFilter(self):
+        """Test to make sure reStructuredTest work well"""
+
+        main.main("init blog_unit_test")
+        #Write a post to the _posts dir:
+        src = """---
+title: This is a test post
+date: 2010/03/27 00:00:00
+---
+
+This is a reStructured post
+===========================
+
+Plain text :
+
+::
+
+    $ echo "hello"
+    hello
+
+"""
+        f = open(os.path.join(self.build_path,"_posts","01. Test post.rst"),"w")
+        f.write(src)
+        f.close()
+        main.config.override_options = {
+            "site.url":"http://www.yoursite.com",
+            "blog.path":"/blog",
+            "blog.auto_permalink.enabled": True,
+            "blog.auto_permalink.path": "/blog/:year/:month/:day/:title" }
+        main.main("build")
+        rendered = open(os.path.join(self.build_path,"_site","blog","2010","03",
+                                     "27","this-is-a-test-post","index.html"
+                                     )).read()
+        assert """<h1 class="title">This is a reStructured post</h1>
+<p>Plain text :</p>
+<pre class="literal-block">
+$ echo &quot;hello&quot;
+hello
+</pre>""" in rendered

@@ -5,10 +5,12 @@ import glob
 import os
 import re
 from .. import main
+from .. import util
 import logging
 
 class TestBuild(unittest.TestCase):
     def setUp(self):
+        main.do_debug()
         #Remember the current directory to preserve state
         self.previous_dir = os.getcwd()
         #Create a staging directory that we can build in
@@ -18,6 +20,8 @@ class TestBuild(unittest.TestCase):
         #Reinitialize the configuration
         main.config.init()
     def tearDown(self):
+        #Revert the config overridden options
+        main.config.override_options = {}
         #go back to the directory we used to be in
         os.chdir(self.previous_dir)
         #Clean up the build directory
@@ -27,10 +31,10 @@ class TestBuild(unittest.TestCase):
         off the webroot work"""
         main.main("init blog_unit_test")
         main.config.override_options = {
-            "site_url":"http://www.test.com/~username",
-            "blog_path":"/path/to/blog" }
+            "site.url":"http://www.test.com/~username",
+            "blog.path":"/path/to/blog" }
         main.main("build")
-        lsdir = os.listdir(os.path.join(self.build_path,"_site","~username",
+        lsdir = os.listdir(os.path.join(self.build_path,"_site",
                                         "path","to","blog"))
         for fn in ("category","page","feed"):
             assert(fn in lsdir)
@@ -38,8 +42,8 @@ class TestBuild(unittest.TestCase):
         """Test that permapages are written"""
         main.main("init blog_unit_test")
         main.config.override_options = {
-            "site_url":"http://www.test.com/",
-            "blog_path":"/blog" }
+            "site.url":"http://www.test.com/",
+            "blog.path":"/blog" }
         main.main("build")
         assert "index.html" in os.listdir(
             os.path.join(self.build_path,"_site","blog",
@@ -53,15 +57,18 @@ class TestBuild(unittest.TestCase):
         main.config.override_options = {
             "site_url":"http://www.test.com/",
             "blog_path":"/blog" }
-        for x in glob.glob("_posts/*"):
-            os.remove(x)
+        shutil.rmtree("_posts")
+        util.mkdir("_posts")
         main.main("build")
+    def testPostInSubdir(self):
+        "Test a post in a subdirectory of _posts"
+        pass
     def testNoPostsDir(self):
         """Test when there is no _posts dir, site still builds cleanly"""
         main.main("init blog_unit_test")
         main.config.override_options = {
-            "site_url":"http://www.test.com/",
-            "blog_path":"/blog" }
+            "site.url":"http://www.test.com/",
+            "blog.path":"/blog" }
         shutil.rmtree("_posts")
         logger = logging.getLogger("blogofile")
         #We don't need to see the error that this test checks for:
@@ -72,8 +79,8 @@ class TestBuild(unittest.TestCase):
         """Test that categories are written"""
         main.main("init blog_unit_test")
         main.config.override_options = {
-            "site_url":"http://www.test.com",
-            "blog_path":"/path/to/blog" }
+            "site.url":"http://www.test.com",
+            "blog.path":"/path/to/blog" }
         main.main("build")
         assert "index.html" in os.listdir(
             os.path.join(self.build_path,"_site","path",
@@ -91,8 +98,8 @@ class TestBuild(unittest.TestCase):
         """Test that archives are written"""
         main.main("init blog_unit_test")
         main.config.override_options = {
-            "site_url":"http://www.test.com",
-            "blog_path":"/path/to/blog" }
+            "site.url":"http://www.test.com",
+            "blog.path":"/path/to/blog" }
         main.main("build")
         assert "index.html" in os.listdir(
             os.path.join(self.build_path,"_site","path",
@@ -101,8 +108,8 @@ class TestBuild(unittest.TestCase):
         """Test that RSS/Atom feeds are written"""
         main.main("init blog_unit_test")
         main.config.override_options = {
-            "site_url":"http://www.test.com",
-            "blog_path":"/path/to/blog" }
+            "site.url":"http://www.test.com",
+            "blog.path":"/path/to/blog" }
         main.main("build")
         #Whole blog feeds
         assert "index.xml" in os.listdir(
@@ -127,14 +134,28 @@ class TestBuild(unittest.TestCase):
         open("test.txt","w").close()
         open("test.py","w").close()
         #File ignore patterns can be strings
-        main.config.file_ignore_patterns.append(r".*test\.txt$")
+        main.config.site.file_ignore_patterns.append(r".*test\.txt$")
         #Or, they can be precompiled regexes
         p = re.compile(".*\.py$")
-        main.config.file_ignore_patterns.append(p)
+        main.config.site.file_ignore_patterns.append(p)
         main.config.recompile()
         main.do_build([], load_config=False)
         assert not "test.txt" in os.listdir(
             os.path.join(self.build_path,"_site"))
         assert not "test.py" in os.listdir(
             os.path.join(self.build_path,"_site"))
-        
+    def testAutoPermalinks(self):
+        main.main("init blog_unit_test")
+        main.main("build")
+        #Make sure the post with question mark in title was generated properly
+        assert os.path.isfile(os.path.join(
+                self.build_path,"_site","blog","2009","08",
+                "29","this-title-has-a-question-mark-","index.html"))
+    def testSimpleBlog(self):
+        """Just do a quick check to make sure simple_blog builds"""
+        main.main("init simple_blog")
+        main.main("build")
+    def testBareBlog(self):
+        """Just do a quick check to make sure bare template builds"""
+        main.main("init bare")
+        main.main("build")

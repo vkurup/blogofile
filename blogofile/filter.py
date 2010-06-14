@@ -1,11 +1,22 @@
+import sys
+import os
 import logging
 import imp
+import operator
 
 import util
 
 logger = logging.getLogger("blogofile.filter")
 
+from cache import bf
+bf.filter = sys.modules['blogofile.filter']
+
 __loaded_filters = {} #name -> mod
+
+default_filter_config = {"name"        : None,
+                         "description" : None,
+                         "author"      : None,
+                         "url"         : None}
 
 def run_chain(chain, content):
     """Run content through a filter chain.
@@ -34,16 +45,78 @@ def parse_chain(chain):
             parts.append(p)
     return parts
 
+def preload_filters(directory="_filters"):
+    #Find all the standalone .py files and modules
+    #in the _filters dir and load them into bf
+    if(not os.path.isdir(directory)): #pragma: no cover
+        return
+    for fn in os.listdir(directory):
+        p = os.path.join(directory,fn)
+        if os.path.isfile(p):
+            if fn.endswith(".py"):
+                load_filter(fn[:-3])
+        elif os.path.isdir(p):
+            if os.path.isfile(os.path.join(p,"__init__.py")):
+                load_filter(fn)
+
+def init_filters():
+    """Filters have an optional init method that runs before the site is built"""
+    for filt in bf.config.filters.values():
+        if filt.has_key("mod"):
+            try:
+                filt.mod.init()
+            except AttributeError:
+                pass
+        
 def load_filter(name):
-    """Load a filter directory from the site's _filters directory"""
+    """Load a filter from the site's _filters directory"""
     logger.debug("Loading filter: "+name)
+    #Don't generate pyc files in the _filters directory
+    #Reset the original sys.dont_write_bytecode setting where we're done
+    try:
+        initial_dont_write_bytecode = sys.dont_write_bytecode
+    except KeyError:
+        initial_dont_write_bytecode = False
+    #Return the cached filter, or load it from scratch it not cached.
     try:
         return __loaded_filters[name]
     except KeyError:
         try:
-            __loaded_filters[name] = imp.load_source(
-                "filter_"+name,util.path_join("_filters",name+".py"))
-            return __loaded_filters[name]
+            sys.path.insert(0,"_filters")
+            #Don't generate .pyc files in the _filters directory
+            sys.dont_write_bytecode = True
+            mod = __loaded_filters[name] = __import__(name)
+            #Load the module into the bf context
+            bf.config.filters[name].mod = mod
+            #If the filter has any aliases, load those as well
+            try:
+                for alias in mod.config['aliases']:
+                    __loaded_filters[alias] = mod
+                    bf.config.filters[alias] = bf.config.filters[name]
+            except:
+                pass
+            #Load the default blogofile config for filters:
+            for k, v in default_filter_config.items():
+                bf.config.filters[name][k] = v
+            #Load any filter defined defaults:
+            try:
+                filter_config = getattr(mod, "config")
+                for k,v in filter_config.items():
+                    if "." in k:
+                        #This is a hierarchical setting
+                        tail = bf.config.filters[name]
+                        parts = k.split(".")
+                        for part in parts[:-1]:
+                            tail = tail[part]
+                        tail[parts[-1]] = v
+                    else:
+                        bf.config.filters[name][k] = v
+            except AttributeError:
+                pass
+            return mod
         except: #pragma: no cover
             logger.error("Cannot load filter: "+name)
             raise
+        finally:
+            sys.path.remove("_filters")
+            sys.dont_write_bytecode = initial_dont_write_bytecode

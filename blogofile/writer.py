@@ -25,8 +25,8 @@ import BeautifulSoup
 import util
 import config
 import cache
-import post
 import filter
+import controller
 
 logger = logging.getLogger("blogofile.writer")
 
@@ -45,18 +45,13 @@ class Writer:
     def __load_bf_cache(self):
         #Template cache object, used to transfer state to/from each template:
         self.bf = cache.bf
-        self.bf.config = self.config
         self.bf.writer = self
-        self.bf.util = util
         self.bf.logger = logger
-        self.bf.filter = filter
-        if self.config.blog_enabled == True:
-            self.bf.posts = post.parse_posts("_posts")
-            self.bf.blog_dir = util.path_join(self.output_dir,self.config.blog_path)
             
     def write_site(self):
         self.__setup_output_dir()
         self.__load_bf_cache()
+        self.__init_filters_controllers()
         self.__run_controllers()
         self.__write_files()
             
@@ -125,36 +120,32 @@ class Writer:
                     f_path = util.path_join(root, t_fn)
                     logger.debug("Copying file: "+f_path)
                     shutil.copyfile(f_path,util.path_join(self.output_dir,f_path))
+
+    def __init_filters_controllers(self):
+        #Run filter/controller defined init methods
+        filter.init_filters()
+        controller.init_controllers()
         
     def __run_controllers(self):
         """Run all the controllers in the _controllers directory"""
-        #Store imported controllers on the bf cache
-        self.bf.controllers = cache.Cache()
-        if(not os.path.isdir("_controllers")): #pragma: no cover
-            return 
-        for py_file in [p for p in sorted(os.listdir("_controllers")) if
-                        p.endswith(".py")]:
-            controller_name = (py_file.split(".")[0].replace("-","_"))
-            import_name = "controller_mod_"+controller_name
-            mod = imp.load_source(import_name,util.path_join("_controllers",py_file))
-            setattr(self.bf.controllers,controller_name,mod)
-        for py_file in [p for p in sorted(os.listdir("_controllers")) if
-                        p.endswith(".py")]:
-            logger.info("Running controller: "+py_file)
-            controller_name = (py_file.split(".")[0].replace("-","_"))
-            mod = getattr(self.bf.controllers,controller_name)
-            if "run" in dir(mod):
-                mod.run()
-            else:
-                logger.debug("Controller %s has no run() function, skipping it." % py_file)
-
+        controller.run_all()
+        
     def template_render(self, template, attrs={}):
+        """Render a template"""
+        #Create a context object that is fresh for each template render
+        self.bf.template_context = cache.Cache(**attrs)
+        #Provide the name of the template we are rendering:
+        self.bf.template_context.template_name = template.uri
         attrs['bf'] = self.bf
+        #Provide the template with other user defined namespaces:
+        for name, obj in self.bf.config.site.template_vars.items():
+            attrs[name] = obj
         try:
             return template.render(**attrs)
         except: #pragma: no cover
             logger.error("Error rendering template")
             print(mako_exceptions.text_error_template().render())
+        del self.bf.template_context
 
     def materialize_template(self, template_name, location, attrs={}):
         """Render a named template with attrs to a location in the _site dir"""

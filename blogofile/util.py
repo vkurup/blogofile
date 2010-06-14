@@ -1,9 +1,12 @@
 import re
 import os
+import sys
 from urlparse import urlparse
 import logging
 
-import config
+from cache import bf
+bf.util = sys.modules['blogofile.util']
+
 
 logger = logging.getLogger("blogofile.util")
 
@@ -25,7 +28,7 @@ def html_escape(text): #pragma: no cover
     
 def should_ignore_path(path):
     """See if a given path matches the ignore patterns"""
-    for p in config.compiled_file_ignore_patterns:
+    for p in bf.config.site.compiled_file_ignore_patterns:
         if p.match(path):
             return True
     return False
@@ -61,6 +64,8 @@ def url_path_helper(*parts):
     'one/two/three'
     >>> url_path_helper("one","/two/","three")
     'one/two/three'
+    >>> url_path_helper("/one","two","three")
+    'one/two/three'
     """
     new_parts = []
     for p in parts:
@@ -81,10 +86,10 @@ def site_path_helper(*parts):
     """Make an absolute path on the site, appending a sequence of path parts to
     the site path
 
-    >>> config.site_url = "http://www.blogofile.com"
+    >>> bf.config.site.url = "http://www.blogofile.com"
     >>> site_path_helper("blog")
     '/blog'
-    >>> config.site_url = "http://www.blgofile.com/~ryan/site1"
+    >>> bf.config.site.url = "http://www.blgofile.com/~ryan/site1"
     >>> site_path_helper("blog")
     '/~ryan/site1/blog'
     >>> site_path_helper("/blog")
@@ -92,22 +97,22 @@ def site_path_helper(*parts):
     >>> site_path_helper("blog","/category1")
     '/~ryan/site1/blog/category1'
     """
-    site_path = urlparse(config.site_url).path
+    site_path = urlparse(bf.config.site.url).path
     path = url_path_helper(site_path,*parts)
     if not path.startswith("/"):
         path = "/" + path
     return path
 
 def fs_site_path_helper(*parts):
-    """Build a path relateive to the built site inside the _site dir
+    """Build a path relative to the built site inside the _site dir
 
-    >>> config.site_url = "http://www.blogofile.com/ryan/site1"
+    >>> bf.config.site.url = "http://www.blogofile.com/ryan/site1"
     >>> fs_site_path_helper()
-    'ryan/site1'
+    ''
     >>> fs_site_path_helper("/blog","/category","stuff")
-    'ryan/site1/blog/category/stuff'
+    'blog/category/stuff'
     """
-    return site_path_helper(*parts).strip("/")
+    return path_join(url_path_helper(*parts).strip("/"))
 
 def path_join(*parts, **kwargs):
     """A better os.path.join
@@ -136,6 +141,17 @@ def path_join(*parts, **kwargs):
         new_parts.append(p.replace(wrong_slash_type,os.sep))
     return sep.join(new_parts)
 
+def recursive_file_list(directory, regex=None):
+    "Recursively walk a directory tree and find all the files matching regex"
+    if type(regex) == basestring:
+        regex = re.compile(regex)
+    for root,dirs,files in os.walk(directory):
+        for f in files:
+            if regex:
+                if regex.match(f):
+                    yield os.path.join(root,f)
+            else:
+                yield os.path.join(root,f)
 
 def force_unicode(s, encoding='utf-8', strings_only=False, errors='strict'):  #pragma: no cover
     """
